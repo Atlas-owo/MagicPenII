@@ -39,12 +39,12 @@ void setup() {
   digitalWrite(M2_PIN, LOW);
   delay(50);
   
-  while (digitalRead(BUTTON_Home_DETECT) != LOW) {
-    digitalWrite(M1_PIN, HIGH);
-    digitalWrite(M2_PIN, LOW);
-    analogWrite(ENA, 180);
-    delay(10);
-  }
+  // while (digitalRead(BUTTON_Home_DETECT) != LOW) {
+  //   digitalWrite(M1_PIN, HIGH);
+  //   digitalWrite(M2_PIN, LOW);
+  //   analogWrite(ENA, 180);
+  //   delay(10);
+  // }
 
   encoderCount = 0;
   attachInterrupt(digitalPinToInterrupt(ENC_A_PIN), handleEncoderA, RISING);
