@@ -39,15 +39,15 @@ void setup() {
   digitalWrite(M2_PIN, LOW);
   delay(50);
   
-  // while (digitalRead(BUTTON_Home_DETECT) != LOW) {
-  //   digitalWrite(M1_PIN, HIGH);
-  //   digitalWrite(M2_PIN, LOW);
-  //   analogWrite(ENA, 180);
-  //   delay(10);
-  // }
+  while (digitalRead(BUTTON_Home_DETECT) != LOW) {
+    digitalWrite(M1_PIN, HIGH);
+    digitalWrite(M2_PIN, LOW);
+    analogWrite(ENA, 180);
+    delay(10);
+  }
 
   encoderCount = 0;
-  attachInterrupt(digitalPinToInterrupt(ENC_A_PIN), handleEncoderA, RISING);
+  //attachInterrupt(digitalPinToInterrupt(ENC_A_PIN), handleEncoderA, RISING);
   Serial.println("Zeroing done.");
   
 }
@@ -67,14 +67,14 @@ void loop() {
   // Check if the pressure sensor is over 150
 
 
-  // if (homePressed && !homeReached){
-  //   Serial.println("Homeing");
-  //   while(!homeReached){
-  //     digitalWrite(M1_PIN, HIGH);
-  //     digitalWrite(M2_PIN, LOW);
-  //     delay(100);
-  //     homeReached = (digitalRead(BUTTON_Home_DETECT) == LOW);
-  //   }   
+  if (homePressed && !homeReached){
+    Serial.println("Homeing");
+    while(!homeReached){
+      digitalWrite(M1_PIN, HIGH);
+      digitalWrite(M2_PIN, LOW);
+      delay(100);
+      homeReached = (digitalRead(BUTTON_Home_DETECT) == LOW);
+    }   
     
     
   // }
@@ -134,7 +134,7 @@ void loop() {
   // }
   Serial.println(encoderCount);
   delay(10);  // simple debounce & status update interval
-}
+}}
 
 
 void handleEncoderA() {
