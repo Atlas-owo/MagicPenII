@@ -9,6 +9,8 @@ class MotorHandler {
     pcnt_unit_t pcnt_unit = PCNT_UNIT_0;
     volatile long targetPosition;
     bool isHoming;
+    int lastSpeed = -1;
+    int lastDirection = 0;
 
     void setMotorDrive(int direction, int speed) {
         if (speed == 0) {
@@ -16,16 +18,24 @@ class MotorHandler {
             return;
         }
 
-        digitalWrite(SLEEP_PIN, HIGH);  // Wake up
+        // Only update if state has changed
+        if (speed != lastSpeed || direction != lastDirection) {
+            digitalWrite(SLEEP_PIN, HIGH);  // Wake up
 
-        if (direction > 0) {
-            // Forward
-            analogWrite(M1_PIN, speed);
-            analogWrite(M2_PIN, 0);
-        } else {
-            // Reverse
-            analogWrite(M1_PIN, 0);
-            analogWrite(M2_PIN, speed);
+            if (direction > 0) {
+                // Forward
+                analogWrite(M1_PIN, speed);
+                analogWrite(M2_PIN, 0);
+                // Serial.println("{\"motor\":\"forward\"}");
+            } else {
+                // Reverse
+                analogWrite(M1_PIN, 0);
+                analogWrite(M2_PIN, speed);
+                // Serial.println("{\"motor\":\"reverse\"}");
+            }
+
+            lastSpeed = speed;
+            lastDirection = direction;
         }
     }
 
@@ -91,6 +101,8 @@ class MotorHandler {
         analogWrite(M1_PIN, 0);
         analogWrite(M2_PIN, 0);
         digitalWrite(SLEEP_PIN, LOW);  // Sleep
+        lastSpeed = 0;
+        lastDirection = 0;
     }
 
     void update() {
@@ -121,6 +133,8 @@ class MotorHandler {
             speed = CREEP_SPEED;
         else if (absError <= SLOW_DISTANCE)
             speed = SLOW_SPEED;
+
+        setMotorDrive(direction, speed);
     }
 
     void setTargetDistance(float distanceMM) {

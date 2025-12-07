@@ -67,7 +67,12 @@ void setup() {
     );
 
     // Initial Homing:
-    motor.stopMotor();
+    // Initial Homing:
+    if (AUTO_HOME_ON_BOOT) {
+        motor.home();
+    } else {
+        motor.stopMotor();
+    }
 }
 
 void loop() {

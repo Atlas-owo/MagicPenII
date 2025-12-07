@@ -38,4 +38,6 @@ constexpr uint32_t SERIAL_RX_TASK_DELAY = 1;     // ms (Fast Read)
 constexpr uint32_t SERIAL_TX_TASK_DELAY = 1000;  // ms (Slow Write)
 constexpr uint32_t MOTOR_TASK_DELAY = 1;         // ms
 
+constexpr bool AUTO_HOME_ON_BOOT = true;
+
 #endif  // SYSTEM_CONFIG_HPP
