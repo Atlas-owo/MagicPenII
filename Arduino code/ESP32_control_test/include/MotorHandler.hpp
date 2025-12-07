@@ -2,141 +2,151 @@
 #define MOTOR_HANDLER_HPP
 
 #include "SystemConfig.hpp"
+#include "driver/pcnt.h"
 
 class MotorHandler {
-private:
-    volatile long    encoderCount;
-    volatile long    targetPosition;
-    volatile uint8_t lastEncoded;
-    bool             isHoming;
+   private:
+    pcnt_unit_t pcnt_unit = PCNT_UNIT_0;
+    volatile long targetPosition;
+    bool isHoming;
 
-    // Static instance pointer for ISR
-    static MotorHandler* instance;
-
-    void setMotorDirection( int direction ) {
-        if ( direction > 0 ) {
-            // Forward
-            digitalWrite( M1_PIN, LOW );
-            digitalWrite( M2_PIN, HIGH );
-        }
-        else {
-            // Reverse
-            digitalWrite( M1_PIN, HIGH );
-            digitalWrite( M2_PIN, LOW );
-        }
-    }
-
-    void setMotorSpeed( int speed ) {
-        analogWrite( ENA_PIN, speed );
-    }
-
-    long distanceToEncoderCounts( float distanceMM ) {
-        return ( long )( ( distanceMM - DISTANCE_OFFSET ) / DISTANCE_SLOPE );
-    }
-
-public:
-    MotorHandler() : encoderCount( 0 ), targetPosition( 0 ), lastEncoded( 0 ), isHoming( false ) {
-        instance = this;
-    }
-
-    void setup() {
-        pinMode( M1_PIN, OUTPUT );
-        pinMode( M2_PIN, OUTPUT );
-        pinMode( ENA_PIN, OUTPUT );
-        pinMode( ENC_A_PIN, INPUT );
-        pinMode( ENC_B_PIN, INPUT );
-        pinMode( BUTTON_HOME_PIN, INPUT_PULLUP );
-
-        stopMotor();
-
-        attachInterrupt( digitalPinToInterrupt( ENC_A_PIN ), handleInterrupt, CHANGE );
-        attachInterrupt( digitalPinToInterrupt( ENC_B_PIN ), handleInterrupt, CHANGE );
-    }
-
-    // Static ISR handler
-    static void handleInterrupt() {
-        if ( instance ) {
-            instance->updateEncoder();
-        }
-    }
-
-    void updateEncoder() {
-        static const int8_t encoderStates[ 16 ] = { 0, -1, 1, 0, 1, 0, 0, -1, -1, 0, 0, 1, 0, 1, -1, 0 };
-        uint8_t             a                   = digitalRead( ENC_A_PIN );
-        uint8_t             b                   = digitalRead( ENC_B_PIN );
-        uint8_t             currentEncoded      = ( a << 1 ) | b;
-        uint8_t             sum                 = ( lastEncoded << 2 ) | currentEncoded;
-        encoderCount += encoderStates[ sum ];
-        lastEncoded = currentEncoded;
-    }
-
-    void stopMotor() {
-        digitalWrite( M1_PIN, LOW );
-        digitalWrite( M2_PIN, LOW );
-        analogWrite( ENA_PIN, 0 );
-    }
-
-    void update() {
-        // Homing Stop Condition
-        if ( digitalRead( BUTTON_HOME_PIN ) == LOW ) {
-            encoderCount = 0;
-            if ( isHoming ) {
-                stopMotor();
-                targetPosition = 0;
-                isHoming       = false;
-                return;
-            }
-        }
-
-        long currentPos = encoderCount;
-        long error      = targetPosition - currentPos;
-        long absError   = abs( error );
-
-        if ( absError <= STOP_TOLERANCE ) {
+    void setMotorDrive(int direction, int speed) {
+        if (speed == 0) {
             stopMotor();
             return;
         }
 
-        int direction = ( error > 0 ) ? 1 : -1;
-        int speed     = FAST_SPEED;
+        digitalWrite(SLEEP_PIN, HIGH);  // Wake up
 
-        if ( absError <= CREEP_DISTANCE )
+        if (direction > 0) {
+            // Forward
+            analogWrite(M1_PIN, speed);
+            analogWrite(M2_PIN, 0);
+        } else {
+            // Reverse
+            analogWrite(M1_PIN, 0);
+            analogWrite(M2_PIN, speed);
+        }
+    }
+
+    long distanceToEncoderCounts(float distanceMM) {
+        return (long)((distanceMM - DISTANCE_OFFSET) / DISTANCE_SLOPE);
+    }
+
+   public:
+    MotorHandler() : targetPosition(0), isHoming(false) {}
+
+    void setup() {
+        pinMode(M1_PIN, OUTPUT);
+        pinMode(M2_PIN, OUTPUT);
+
+        // Setup Sleep Pin
+        pinMode(SLEEP_PIN, OUTPUT);
+        digitalWrite(SLEEP_PIN, HIGH);  // Enable Driver
+
+        pinMode(BUTTON_HOME_PIN, INPUT_PULLUP);
+        pinMode(BUTTON_CONTROL_PIN, INPUT_PULLUP);
+
+        stopMotor();
+
+        // Standard Quadrature Decoder configuration for Legacy PCNT
+        // Unit 0, Channel 0
+        pcnt_config_t pcnt_config_a = {};
+        pcnt_config_a.pulse_gpio_num = ENC_A_PIN;
+        pcnt_config_a.ctrl_gpio_num = ENC_B_PIN;
+        pcnt_config_a.channel = PCNT_CHANNEL_0;
+        pcnt_config_a.unit = pcnt_unit;
+        pcnt_config_a.pos_mode = PCNT_COUNT_INC;       // Count up on rising edge
+        pcnt_config_a.neg_mode = PCNT_COUNT_DEC;       // Count down on falling edge
+        pcnt_config_a.lctrl_mode = PCNT_MODE_REVERSE;  // Reverse counting direction if low
+        pcnt_config_a.hctrl_mode = PCNT_MODE_KEEP;     // Keep counting direction if high
+        pcnt_config_a.counter_h_lim = 32000;
+        pcnt_config_a.counter_l_lim = -32000;
+        pcnt_unit_config(&pcnt_config_a);
+
+        // Unit 0, Channel 1 - for 4x resolution (counting edges of B as well)
+        pcnt_config_t pcnt_config_b = {};
+        pcnt_config_b.pulse_gpio_num = ENC_B_PIN;
+        pcnt_config_b.ctrl_gpio_num = ENC_A_PIN;
+        pcnt_config_b.channel = PCNT_CHANNEL_1;
+        pcnt_config_b.unit = pcnt_unit;
+        pcnt_config_b.pos_mode = PCNT_COUNT_INC;
+        pcnt_config_b.neg_mode = PCNT_COUNT_DEC;
+        pcnt_config_b.lctrl_mode = PCNT_MODE_KEEP;
+        pcnt_config_b.hctrl_mode = PCNT_MODE_REVERSE;
+        pcnt_config_b.counter_h_lim = 32000;
+        pcnt_config_b.counter_l_lim = -32000;
+        pcnt_unit_config(&pcnt_config_b);
+
+        // Filter
+        pcnt_set_filter_value(pcnt_unit, 100);
+        pcnt_filter_enable(pcnt_unit);
+
+        pcnt_counter_pause(pcnt_unit);
+        pcnt_counter_clear(pcnt_unit);
+        pcnt_counter_resume(pcnt_unit);
+    }
+
+    void stopMotor() {
+        analogWrite(M1_PIN, 0);
+        analogWrite(M2_PIN, 0);
+        digitalWrite(SLEEP_PIN, LOW);  // Sleep
+    }
+
+    void update() {
+        // Homing Stop Condition
+        if (digitalRead(BUTTON_HOME_PIN) == LOW) {
+            pcnt_counter_clear(pcnt_unit);
+            if (isHoming) {
+                stopMotor();
+                targetPosition = 0;
+                isHoming = false;
+                return;
+            }
+        }
+
+        long currentPos = getPosition();
+        long error = targetPosition - currentPos;
+        long absError = abs(error);
+
+        if (absError <= STOP_TOLERANCE) {
+            stopMotor();
+            return;
+        }
+
+        int direction = (error > 0) ? 1 : -1;
+        int speed = FAST_SPEED;
+
+        if (absError <= CREEP_DISTANCE)
             speed = CREEP_SPEED;
-        else if ( absError <= SLOW_DISTANCE )
+        else if (absError <= SLOW_DISTANCE)
             speed = SLOW_SPEED;
-
-        setMotorDirection( direction );
-        setMotorSpeed( speed );
     }
 
-    void setTargetDistance( float distanceMM ) {
-        if ( distanceMM < MIN_DISTANCE_MM )
-            distanceMM = MIN_DISTANCE_MM;
-        if ( distanceMM > MAX_DISTANCE_MM )
-            distanceMM = MAX_DISTANCE_MM;
-        setTargetPosition( distanceToEncoderCounts( distanceMM ) );
+    void setTargetDistance(float distanceMM) {
+        if (distanceMM < MIN_DISTANCE_MM) distanceMM = MIN_DISTANCE_MM;
+        if (distanceMM > MAX_DISTANCE_MM) distanceMM = MAX_DISTANCE_MM;
+        setTargetPosition(distanceToEncoderCounts(distanceMM));
     }
 
-    void setTargetPosition( long target ) {
-        if ( !isHoming ) {
-            if ( target < MIN_POSITION )
+    void setTargetPosition(long target) {
+        if (!isHoming) {
+            if (target < MIN_POSITION)
                 target = MIN_POSITION;
-            else if ( target > MAX_POSITION )
+            else if (target > MAX_POSITION)
                 target = MAX_POSITION;
         }
         targetPosition = target;
     }
 
-    long getPosition() const {
-        return encoderCount;
+    long getPosition() {
+        int16_t count = 0;
+        pcnt_get_counter_value(pcnt_unit, &count);
+        return (long)count;
     }
-    long getTarget() const {
-        return targetPosition;
-    }
+    long getTarget() const { return targetPosition; }
 
-    float getDistanceMM() {
-        return ( encoderCount * DISTANCE_SLOPE ) + DISTANCE_OFFSET;
-    }
+    float getDistanceMM() { return (getPosition() * DISTANCE_SLOPE) + DISTANCE_OFFSET; }
 
     void home() {
         isHoming = true;
@@ -145,7 +155,5 @@ public:
         targetPosition = -100000;
     }
 };
-
-MotorHandler* MotorHandler::instance = nullptr;
 
 #endif  // MOTOR_HANDLER_HPP
