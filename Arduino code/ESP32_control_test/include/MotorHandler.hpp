@@ -11,6 +11,8 @@ class MotorHandler {
     bool isHoming;
     int lastSpeed = -1;
     int lastDirection = 0;
+    long lastError = 0;
+    unsigned long lastTime = 0;
 
     void setMotorDrive(int direction, int speed) {
         if (speed == 0) {
@@ -26,12 +28,10 @@ class MotorHandler {
                 // Forward
                 analogWrite(M1_PIN, speed);
                 analogWrite(M2_PIN, 0);
-                // Serial.println("{\"motor\":\"forward\"}");
             } else {
                 // Reverse
                 analogWrite(M1_PIN, 0);
                 analogWrite(M2_PIN, speed);
-                // Serial.println("{\"motor\":\"reverse\"}");
             }
 
             lastSpeed = speed;
@@ -117,22 +117,43 @@ class MotorHandler {
             }
         }
 
+        if (isHoming) {
+            setMotorDrive(-1, MIN_PWM);
+            return;
+        }
+
         long currentPos = getPosition();
         long error = targetPosition - currentPos;
-        long absError = abs(error);
 
-        if (absError <= STOP_TOLERANCE) {
+        unsigned long currentTime = millis();
+        float dt = (currentTime - lastTime) / 1000.0;
+        if (dt <= 0) dt = 0.001;  // Prevent division by zero if called too fast
+
+        float derivative = (error - lastError) / dt;
+
+        // PD Output
+        float output = (KP * error) + (KD * derivative);
+
+        // Update state
+        lastError = error;
+        lastTime = currentTime;
+
+        // Deadband / Stop Condition
+        if (abs(error) <= STOP_TOLERANCE) {
             stopMotor();
             return;
         }
 
-        int direction = (error > 0) ? 1 : -1;
-        int speed = FAST_SPEED;
+        int speed = abs(output);
+        int direction = (output > 0) ? 1 : -1;
 
-        if (absError <= CREEP_DISTANCE)
-            speed = CREEP_SPEED;
-        else if (absError <= SLOW_DISTANCE)
-            speed = SLOW_SPEED;
+        // Constraint Speed
+        if (speed > 255) speed = 255;
+
+        // Minimum PWM to overcome friction
+        if (speed < MIN_PWM && speed > 0) {
+            speed = MIN_PWM;
+        }
 
         setMotorDrive(direction, speed);
     }
@@ -162,12 +183,7 @@ class MotorHandler {
 
     float getDistanceMM() { return (getPosition() * DISTANCE_SLOPE) + DISTANCE_OFFSET; }
 
-    void home() {
-        isHoming = true;
-        // Move in reverse direction indefinitely (until switch)
-        // using a target far beyond reachable bounds
-        targetPosition = -100000;
-    }
+    void home() { isHoming = true; }
 };
 
 #endif  // MOTOR_HANDLER_HPP

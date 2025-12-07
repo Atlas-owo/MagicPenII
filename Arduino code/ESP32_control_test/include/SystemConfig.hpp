@@ -16,12 +16,9 @@ constexpr uint8_t BUTTON_HOME_PIN = 12;
 constexpr uint8_t BUTTON_CONTROL_PIN = 14;
 
 // ----------------- Movement Parameters -----------------
-constexpr int FAST_SPEED = 255;
-constexpr int SLOW_SPEED = 150;
-constexpr int CREEP_SPEED = 80;
-
-constexpr int SLOW_DISTANCE = 300;
-constexpr int CREEP_DISTANCE = 200;
+constexpr float KP = 0.7;
+constexpr float KD = 0.05;
+constexpr int MIN_PWM = 100;
 constexpr int STOP_TOLERANCE = 10;
 
 // ----------------- Limits & conversion -----------------
